@@ -21,6 +21,7 @@ dependencies = [
     "matplotlib",
     "scipy",
     # "dask>=2024.5.0",
+    "ipykernel>=7.0.1",
 ]
 
 [project.urls]
