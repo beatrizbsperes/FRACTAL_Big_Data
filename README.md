@@ -6,18 +6,17 @@ This project implements and evaluates a machine learning algorithm for **land co
 ## Objectives
 - Perform classification of land cover types from point cloud data.
 - Apply a machine learning model using PySpark MLlib.
-- Leverage AWS EMR for distributed data processing.
 
-## Tools and Technologies
-- **Data Storage:** AWS S3  
-- **Data Preprocessing:** PySpark  
-- **Machine Learning:** PySpark MLlib  
-- **Processing Platform:** AWS EMR  
-- **Environment Management:** uv
+## Environment file
 
-## Environment Setup
-This project uses [uv](https://docs.astral.sh/uv/) to manage dependencies.
+Create a .env file that contains two variables:
+```bash
+ACCESS_KEY=your_key
+ACCESS_SECRET=your_secret
+```
+## Notebook
 
-1. Create or sync the environment using the provided `pyproject.toml` file:
-   ```bash
-   uv sync
+|- explorer.ipynb ## contains how to go trhough the handler class function 
+|- src/ ## contains the function to handle the bucket and spark dataframe 
+
+

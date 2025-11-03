@@ -1,1 +1,4 @@
 .env
+.venv/
+pyspark_fractal.egg-info/
+.DS_Store
