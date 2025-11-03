@@ -3,60 +3,6 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 from pyspark.sql.types import StructType, StructField, StringType
 
-def get_string_schema():
-    """Define schema to read all fields as strings initially."""
-    return StructType([
-        StructField("x", StringType(), nullable=True),
-        StructField("y", StringType(), nullable=True),
-        StructField("z", StringType(), nullable=True),
-        StructField("intensity", StringType(), nullable=True),
-        StructField("returnnumber", StringType(), nullable=True),
-        StructField("numberofreturns", StringType(), nullable=True),
-        StructField("scandirectionflag", StringType(), nullable=True),
-        StructField("edgeofflightline", StringType(), nullable=True),
-        StructField("classification", StringType(), nullable=True),
-        StructField("synthetic", StringType(), nullable=True),
-        StructField("keypoint", StringType(), nullable=True),
-        StructField("withheld", StringType(), nullable=True),
-        StructField("overlap", StringType(), nullable=True),
-        StructField("scananglerank", StringType(), nullable=True),
-        StructField("userdata", StringType(), nullable=True),
-        StructField("pointsourceid", StringType(), nullable=True),
-        StructField("gpstime", StringType(), nullable=True),
-        StructField("scanchannel", StringType(), nullable=True),
-        StructField("red", StringType(), nullable=True),
-        StructField("green", StringType(), nullable=True),
-        StructField("blue", StringType(), nullable=True),
-        StructField("infrared", StringType(), nullable=True)
-    ])
-
-def cast_to_proper_types(df):
-    """Cast string columns to proper data types."""
-    return df.select(
-        col("x").cast("double").alias("x"),
-        col("y").cast("double").alias("y"),
-        col("z").cast("double").alias("z"),
-        col("intensity").cast("double").alias("intensity"),
-        col("returnnumber").cast("double").alias("returnnumber"),
-        col("numberofreturns").cast("double").alias("numberofreturns"),
-        col("scandirectionflag").cast("double").alias("scandirectionflag"),
-        col("edgeofflightline").cast("double").alias("edgeofflightline"),
-        col("classification").cast("double").alias("classification"),
-        col("synthetic").cast("double").alias("synthetic"),
-        col("keypoint").cast("double").alias("keypoint"),
-        col("withheld").cast("double").alias("withheld"),
-        col("overlap").cast("double").alias("overlap"),
-        col("scananglerank").cast("double").alias("scananglerank"),
-        col("userdata").cast("double").alias("userdata"),
-        col("pointsourceid").cast("double").alias("pointsourceid"),
-        col("gpstime").cast("double").alias("gpstime"),
-        col("scanchannel").cast("double").alias("scanchannel"),
-        col("red").cast("double").alias("red"),
-        col("green").cast("double").alias("green"),
-        col("blue").cast("double").alias("blue"),
-        col("infrared").cast("double").alias("infrared")
-    )
-
 def check_train_files_for_nulls(bucket_name, prefix=""):
     """
     Check all TRAIN files in S3 bucket for null values.
