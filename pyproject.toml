@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyspark-fractal"
+version = "0.1.0"
+description = "Big data processing and analysis of fractal point clouds using PySpark"
+requires-python = "==3.13.5"
+
+authors = [
+    { name = "Beatriz Peres" },
+    { name = "Emanuel Goulart" }
+]
+
+dependencies = [
+    "pyspark==4.0.1",
+    "numpy",
+    "pandas",
+    # "pyarrow",
+    "matplotlib",
+    "scipy",
+    # "dask>=2024.5.0",
+    "ipykernel>=7.0.1",
+]
+
+[project.urls]
+Source = "https://github.com/beatrizbsperes/FRACTAL_Big_Data"
