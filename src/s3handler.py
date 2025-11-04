@@ -5,6 +5,11 @@ import sys
 from pyspark.ml import Pipeline
 from pyspark.ml.feature import VectorAssembler, StandardScaler
 import os
+from pyspark.sql import Window
+from pyspark.sql.functions import (
+    col, sqrt, mean, stddev, count, 
+    min as spark_min, max as spark_max
+)
 
 ## Note
 ## This is slightly different from Sparker2.py because there are two methods
@@ -164,4 +169,74 @@ class PreProcessing():
         assembler = VectorAssembler(inputCols=feature_cols, outputCol="features")
         
         return assembler 
+
+class FeatureEngineering():
+    def __init__(self, spark_df):
+        self.df = spark_df
+    
+    def height_above_ground(self, grid_size=5.0):
+        """
+        Calculate height above local ground.
+        """
+        self.df = self.df.withColumn("gx", (col("x") / grid_size).cast("int")) \
+                         .withColumn("gy", (col("y") / grid_size).cast("int"))
         
+        window = Window.partitionBy("gx", "gy")
+        self.df = self.df.withColumn("ground_z", spark_min("z").over(window))
+        
+        self.df = self.df.withColumn("height_above_ground", col("z") - col("ground_z"))
+        self.df = self.df.drop("gx", "gy", "ground_z")
+        return self.df
+    
+    def local_stats(self, grid_size=2.0):
+        """
+        Calculate local neighborhood statistics.
+        Creates roughness and density features.
+        """
+        self.df = self.df.withColumn("lx", (col("x") / grid_size).cast("int")) \
+                         .withColumn("ly", (col("y") / grid_size).cast("int"))
+        
+        window = Window.partitionBy("lx", "ly")
+        
+        # local statistics
+        self.df = self.df.withColumn("local_density", count("*").over(window)) \
+                         .withColumn("local_z_std", stddev("z").over(window)) \
+                         .withColumn("local_z_range", 
+                                   spark_max("z").over(window) - spark_min("z").over(window))
+        
+        # roughness (normalized std)
+        self.df = self.df.withColumn("roughness", 
+                                    col("local_z_std") / (col("local_z_range") + 0.01))
+        
+        self.df = self.df.drop("lx", "ly")
+        return self.df
+    
+    def return_features(self):
+        """
+        Features from LiDAR returns.
+        Key for vegetation vs building classification.
+        """
+        self.df = self.df.withColumn("return_ratio", 
+                                    col("ReturnNumber") / col("NumberOfReturns")) \
+                         .withColumn("is_single_return", 
+                                   (col("NumberOfReturns") == 1).cast("int")) \
+                         .withColumn("is_last_return",
+                                   (col("ReturnNumber") == col("NumberOfReturns")).cast("int"))
+        return self.df
+    
+    def vegetation_index(self):
+        """
+        NDVI for vegetation detection.
+        Green red ratio.
+        """
+        self.df = self.df.withColumn("ndvi", (col("Infrared") - col("Red")) / (col("Infrared") + col("Red") + 0.001))
+        self.df = self.df.withColumn("green_red_ratio", col("Green") / (col("Red") + 0.001))
+        return self.df
+    
+    def weater_detection(self):
+        """
+        NDWI for water detection
+        """
+        self.df = self.df.withColumn("ndwi", (col("Green") - col("Infrared")) / (col("Green") + col("Infrared") + 0.001))
+        return self.df
+
