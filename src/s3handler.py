@@ -77,28 +77,57 @@ class Sparker:
         
         return spark
                              
+    # def read_parquet(self, bucket_name, path, read_all=True):
+    #     """
+    #     Read the parquet file(s) with inferred schema.
+    
+    #     Args:
+    #         bucket_name (str): S3 bucket name
+    #         path (str): Path to parquet file or directory
+    #         read_all (bool) True: If True, reads all parquet files in directory
+    #     """
+        
+    #     # Construct full S3 path
+    #     if read_all:
+    #         self.file_path = f"s3a://{bucket_name}/{path}/*.parquet"  ## catch all files in a bucket
+    #     else:
+    #         self.file_path = f"s3a://{bucket_name}/{path}"
+            
+    #     print(f"Reading from: {self.file_path}")
+        
+    #     return self.spark.read \
+    #             .option("header", "true") \
+    #             .option("inferSchema", "true") \
+    #             .parquet(self.file_path)
+
+
     def read_parquet(self, bucket_name, path, read_all=True):
         """
         Read the parquet file(s) with inferred schema.
-    
+        
         Args:
             bucket_name (str): S3 bucket name
-            path (str): Path to parquet file or directory
-            read_all (bool) True: If True, reads all parquet files in directory
+            path (str or list of str): Path(s) to parquet file(s) or directory
+            read_all (bool): If True, reads all parquet files in directory
         """
         
-        # Construct full S3 path
-        if read_all:
-            self.file_path = f"s3a://{bucket_name}/{path}/*.parquet"  ## catch all files in a bucket
-        else:
-            self.file_path = f"s3a://{bucket_name}/{path}"
-            
-        print(f"Reading from: {self.file_path}")
+        if isinstance(path, str):
+            path = [path]  # Make it a list for uniform handling
+
+        paths_to_read = []
+        for p in path:
+            if read_all:
+                paths_to_read.append(f"s3a://{bucket_name}/{p}/*.parquet")
+            else:
+                paths_to_read.append(f"s3a://{bucket_name}/{p}")
+        
+        print(f"Reading from: {paths_to_read}")
         
         return self.spark.read \
                 .option("header", "true") \
                 .option("inferSchema", "true") \
-                .parquet(self.file_path)
+                .parquet(*paths_to_read)  # <-- pass the list as *args
+
     
     def close(self):
         """
