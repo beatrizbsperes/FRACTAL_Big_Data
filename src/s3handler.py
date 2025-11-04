@@ -233,10 +233,18 @@ class FeatureEngineering():
         self.df = self.df.withColumn("green_red_ratio", col("Green") / (col("Red") + 0.001))
         return self.df
     
-    def weater_detection(self):
+    def water_detection(self):
         """
         NDWI for water detection
         """
         self.df = self.df.withColumn("ndwi", (col("Green") - col("Infrared")) / (col("Green") + col("Infrared") + 0.001))
         return self.df
-
+    
+    def apply_all(self):
+        """Apply all feature engineering steps"""
+        self.height_above_ground()
+        self.local_stats()
+        self.return_features()
+        self.vegetation_index()
+        self.water_detection()
+        return self.df
