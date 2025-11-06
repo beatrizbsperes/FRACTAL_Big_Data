@@ -112,7 +112,6 @@ class Sparker:
                 .option("inferSchema", "true") \
                 .parquet(*self.file_path)  # <-- pass the list as *args
 
-    
     def close(self):
         """
         Stop the Spark session and release resources.
