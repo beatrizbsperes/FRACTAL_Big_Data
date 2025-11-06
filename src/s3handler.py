@@ -33,7 +33,6 @@ class Sparker:
         self.secret_key = secret_key
         
         self.spark = None
-        
   
     def _create_session(self):
         """
@@ -82,30 +81,6 @@ class Sparker:
         
         return spark
                              
-    # def read_parquet(self, bucket_name, path, read_all=True):
-    #     """
-    #     Read the parquet file(s) with inferred schema.
-    
-    #     Args:
-    #         bucket_name (str): S3 bucket name
-    #         path (str): Path to parquet file or directory
-    #         read_all (bool) True: If True, reads all parquet files in directory
-    #     """
-        
-    #     # Construct full S3 path
-    #     if read_all:
-    #         self.file_path = f"s3a://{bucket_name}/{path}/*.parquet"  ## catch all files in a bucket
-    #     else:
-    #         self.file_path = f"s3a://{bucket_name}/{path}"
-            
-    #     print(f"Reading from: {self.file_path}")
-        
-    #     return self.spark.read \
-    #             .option("header", "true") \
-    #             .option("inferSchema", "true") \
-    #             .parquet(self.file_path)
-
-
     def read_parquet(self, bucket_name, path, read_all=True):
         """
         Read the parquet file(s) with inferred schema.
@@ -133,7 +108,6 @@ class Sparker:
                 .option("inferSchema", "true") \
                 .parquet(*paths_to_read)  # <-- pass the list as *args
 
-    
     def close(self):
         """
         Stop the Spark session and release resources.
