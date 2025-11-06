@@ -11,19 +11,16 @@ from pyspark.sql.functions import (
     min as spark_min, max as spark_max
 )
 
-## Note
-## This is slightly different from Sparker2.py because there are two methods
-## to create the session, locally and on the bucket, this is more for a 
-## single file exploration but running on a jupyter notebook
 
 class Sparker:
     """
     A class to handle Spark operations on S3 parquet files.
     """
     
-    def __init__(self, access_key, secret_key, run_locally=False):
+    def __init__(self, access_key=None, secret_key=None):
         """
         Initialize Sparker with S3 credentials and file information.
+        Access key and Secret key are only necessary when not running inside the AWS EC2 cluster.
         
         Args:
             access_key (str): AWS access key
@@ -31,34 +28,28 @@ class Sparker:
         """
         self.access_key = access_key
         self.secret_key = secret_key
-        
         self.spark = None
-        
-  
-    def _create_session(self):
-        """
-        Create and configure Spark session with S3 settings.
-        
-        Returns:
-            SparkSession: Configured Spark session
-        """
-        spark = SparkSession.builder \
-            .appName("Sparker - S3 Parquet Reader") \
-            .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
-            .config("spark.hadoop.fs.s3a.access.key", self.access_key) \
-            .config("spark.hadoop.fs.s3a.secret.key", self.secret_key) \
-            .config("spark.hadoop.fs.s3a.aws.credentials.provider", 
-                    "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider") \
-            .config("spark.hadoop.fs.s3a.connection.timeout", "50000") \
-            .config("spark.hadoop.fs.s3a.threads.keepalivetime", "60000") \
-            .config("spark.hadoop.fs.s3a.multipart.purge.age", "30000000") \
-            .config("spark.hadoop.fs.s3a.connection.establish.timeout", "30000") \
-            .getOrCreate()
-
-        spark.sparkContext.setLogLevel("ERROR")
-        
-        self.spark = spark
+        self.executor_mem = "4g"
+        self.driver_mem = "4g"
     
+        
+    def _create_on_cluster_session(self):
+        spark =  ( 
+            SparkSession.builder 
+                .appName("Read FRACTAL files") 
+                .config("spark.hadoop.fs.s3a.fast.upload", "true")
+                .config("spark.hadoop.fs.s3a.multipart.size", "104857600")
+                .config("spark.executor.memory",self.executor_mem)
+                .config("spark.driver.memory", self.driver_mem)
+                .getOrCreate()
+            )
+        self.spark = spark
+        
+        print("Session Created!")
+        print(f"- executor memory= {self.executor_mem}")
+        print(f"- driver memory= {self.driver_mem}")
+        
+          
     def _create_local_session(self):
         """
         Try to create a local session to run in a notebook
@@ -82,56 +73,32 @@ class Sparker:
         
         return spark
                              
-    # def read_parquet(self, bucket_name, path, read_all=True):
-    #     """
-    #     Read the parquet file(s) with inferred schema.
-    
-    #     Args:
-    #         bucket_name (str): S3 bucket name
-    #         path (str): Path to parquet file or directory
-    #         read_all (bool) True: If True, reads all parquet files in directory
-    #     """
-        
-    #     # Construct full S3 path
-    #     if read_all:
-    #         self.file_path = f"s3a://{bucket_name}/{path}/*.parquet"  ## catch all files in a bucket
-    #     else:
-    #         self.file_path = f"s3a://{bucket_name}/{path}"
-            
-    #     print(f"Reading from: {self.file_path}")
-        
-    #     return self.spark.read \
-    #             .option("header", "true") \
-    #             .option("inferSchema", "true") \
-    #             .parquet(self.file_path)
 
-
-    def read_parquet(self, bucket_name, path, read_all=True):
+    def read_parquet(self, bucket_name, path, read_all=False):
         """
         Read the parquet file(s) with inferred schema.
+        It accepts str or list of strings as path
         
         Args:
             bucket_name (str): S3 bucket name
             path (str or list of str): Path(s) to parquet file(s) or directory
-            read_all (bool): If True, reads all parquet files in directory
+            read_all (bool): Default False. If True, reads all parquet files in directory
         """
-        
+        if read_all:
+            self.file_path = f"s3a://{bucket_name}/{path}/*.parquet"
+            
         if isinstance(path, str):
-            path = [path]  # Make it a list for uniform handling
+            self.file_path = [path]  # Make it a list for uniform handling
 
-        paths_to_read = []
-        for p in path:
-            if read_all:
-                paths_to_read.append(f"s3a://{bucket_name}/{p}/*.parquet")
-            else:
-                paths_to_read.append(f"s3a://{bucket_name}/{p}")
+        if isinstance(path, list):
+            self.file_path = [f"s3a://{bucket_name}/{p}" for p in path]
         
-        print(f"Reading from: {paths_to_read}")
+        print(f"Reading from: {self.file_path}")
         
         return self.spark.read \
                 .option("header", "true") \
                 .option("inferSchema", "true") \
-                .parquet(*paths_to_read)  # <-- pass the list as *args
+                .parquet(*self.file_path)  # <-- pass the list as *args
 
     
     def close(self):
