@@ -10,7 +10,7 @@ from pyspark.sql.functions import (
                             col, sqrt, mean, stddev, count, 
                             min as spark_min, max as spark_max
                         )
-
+from pyspark.sql.functions import coalesce, lit
 
 class Sparker:
     """
@@ -33,14 +33,26 @@ class Sparker:
         self.driver_mem = "4g"
     
         
-    def _create_on_cluster_session(self):
+    def _create_on_cluster_session(self, executor_mem=None, driver_mem=None):
+        """
+        Create a session to be run on the AWS EC2 cluster.
+        
+        Args:
+            executor_mem: str (e.g: 4g) = Memory of the executor node.
+            driver_mem: str (e.g: 4g) = Memory of the Driver node.
+        """
+        if executor_mem==None:
+            executor_mem = self.executor_mem
+        if driver_mem==None:
+            driver_mem = self.driver_mem
+            
         spark =  ( 
             SparkSession.builder 
                 .appName("Read FRACTAL files") 
                 .config("spark.hadoop.fs.s3a.fast.upload", "true")
                 .config("spark.hadoop.fs.s3a.multipart.size", "104857600")
-                .config("spark.executor.memory",self.executor_mem)
-                .config("spark.driver.memory", self.driver_mem)
+                .config("spark.executor.memory",executor_mem )
+                .config("spark.driver.memory", driver_mem )
                 .getOrCreate()
             )
         self.spark = spark
@@ -88,7 +100,7 @@ class Sparker:
             self.file_path = f"s3a://{bucket_name}/{path}/*.parquet"
             
         if isinstance(path, str):
-            self.file_path = [path]  # Make it a list for uniform handling
+            self.file_path = [f"s3a://{bucket_name}/{path}"]  # Make it a list for uniform handling
 
         if isinstance(path, list):
             self.file_path = [f"s3a://{bucket_name}/{p}" for p in path]
@@ -126,6 +138,7 @@ class PreProcessing():
         self.df = self.df.withColumn("x", col("xyz").getItem(0)) \
                         .withColumn("y", col("xyz").getItem(1)) \
                         .withColumn("z", col("xyz").getItem(2))
+        return self.df
                         
     def assembler(self, feature_cols):
         """
@@ -135,6 +148,7 @@ class PreProcessing():
         assembler = VectorAssembler(inputCols=feature_cols, outputCol="features")
         
         return assembler 
+
 
 class FeatureEngineering():
     def __init__(self, spark_df):
@@ -160,24 +174,28 @@ class FeatureEngineering():
         Creates roughness and density features.
         """
         self.df = self.df.withColumn("lx", (col("x") / grid_size).cast("int")) \
-                         .withColumn("ly", (col("y") / grid_size).cast("int"))
+                        .withColumn("ly", (col("y") / grid_size).cast("int"))
         
         window = Window.partitionBy("lx", "ly")
         
-        # local statistics
+        # local statistics with null handling
         self.df = self.df.withColumn("local_density", count("*").over(window)) \
-                         .withColumn("local_z_std", stddev("z").over(window)) \
-                         .withColumn("local_z_range", 
-                                   spark_max("z").over(window) - spark_min("z").over(window))
+                        .withColumn("local_z_std", 
+                                coalesce(stddev("z").over(window), lit(0.0))) \
+                        .withColumn("local_z_range", 
+                                spark_max("z").over(window) - spark_min("z").over(window))
         
-        # roughness (normalized std)
+        # roughness (normalized std) with null handling
         self.df = self.df.withColumn("roughness", 
-                                    col("local_z_std") / (col("local_z_range") + 0.01))
+                                    coalesce(
+                                        col("local_z_std") / (col("local_z_range") + 0.01),
+                                        lit(0.0)
+                                    ))
         
         self.df = self.df.drop("lx", "ly")
         return self.df
     
-    def return_features(self):
+    def number_of_return(self):
         """
         Features from LiDAR returns.
         Key for vegetation vs building classification.
@@ -206,11 +224,16 @@ class FeatureEngineering():
         self.df = self.df.withColumn("ndwi", (col("Green") - col("Infrared")) / (col("Green") + col("Infrared") + 0.001))
         return self.df
     
+    def drop_xyz(self):
+        self.df = self.df.drop('xyz')
+        return self.df
+    
     def apply_all(self):
         """Apply all feature engineering steps"""
         self.height_above_ground()
         self.local_stats()
-        self.return_features()
+        self.number_of_return()
         self.vegetation_index()
         self.water_detection()
-        return self.df
+        self.drop_xyz()
+        return self.df 
