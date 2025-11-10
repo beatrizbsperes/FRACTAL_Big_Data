@@ -568,6 +568,7 @@ dependencies = [
     { name = "pyspark" },
     { name = "python-dotenv" },
     { name = "scipy" },
+    { name = "sparkmeasure" },
 ]
 
 [package.metadata]
@@ -579,6 +580,7 @@ requires-dist = [
     { name = "pyspark", specifier = "==4.0.1" },
     { name = "python-dotenv" },
     { name = "scipy" },
+    { name = "sparkmeasure" },
 ]
 
 [[package]]
@@ -682,6 +684,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/94/e7/b2c673351809dca68a0e064b6af791aa332cf192da575fd474ed7d6f16a2/six-1.17.0.tar.gz", hash = "sha256:ff70335d468e7eb6ec65b95b99d3a2836546063f63acc5171de367e834932a81", size = 34031, upload-time = "2024-12-04T17:35:28.174Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/ce/149a00dd41f10bc29e5921b496af8b574d8413afcd5e30dfa0ed46c2cc5e/six-1.17.0-py2.py3-none-any.whl", hash = "sha256:4721f391ed90541fddacab5acf947aa0d3dc7d27b2e1e8eda2be8970586c3274", size = 11050, upload-time = "2024-12-04T17:35:26.475Z" },
+]
+
+[[package]]
+name = "sparkmeasure"
+version = "0.27.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/29/78/fdbdf25a859067a829ea26711dff3c80ed8cb72a36f474dca8b38fb94d1d/sparkmeasure-0.27.0.tar.gz", hash = "sha256:785ed898724ae8db9e5af2a2af4ed1d16c78b00e3cdc75c96e8b29f323e7572c", size = 6719, upload-time = "2025-10-03T09:20:02.993Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f9/10/392fca96f15f41e8d4bb25c1f627cec1ba13c7ca84fe1721695932360eeb/sparkmeasure-0.27.0-py2.py3-none-any.whl", hash = "sha256:8c519f39f902d818fe131cbe2d164093785a5174700d47af53fd9658b09287b8", size = 8524, upload-time = "2025-10-03T09:20:01.849Z" },
 ]
 
 [[package]]

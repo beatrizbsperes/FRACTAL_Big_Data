@@ -28,7 +28,7 @@ if __name__ == "__main__":
     path_test = "test/*.parquet"
     
     
-    metrics_file = f"metrics/{}"
+    metrics_file = (f"metrics/{}")
     ## First parquet cols to be select in order to reduce computational 
     parquet_cols = ["xyz","Intensity","Classification","Red","Green","Blue","Infrared","ReturnNumber","NumberOfReturns"]
 
