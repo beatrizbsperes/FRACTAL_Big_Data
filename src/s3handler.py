@@ -29,37 +29,50 @@ class Sparker:
         self.access_key = access_key
         self.secret_key = secret_key
         self.spark = None
+        self.num_cores_per_executor = "8"
+        self.num_executors = "7"
         self.executor_mem = "4g"
         self.driver_mem = "4g"
     
         
-    def _create_on_cluster_session(self, executor_mem=None, driver_mem=None):
+    def _create_on_cluster_session(self, num_executors='8', num_cores_per_executor='7',
+                                   executor_mem="4g", driver_mem="4g"):
         """
         Create a session to be run on the AWS EC2 cluster.
         
         Args:
+            num_executors (int): Number of executors
+            num_cores_per_executor (int): Number of cores per executor
             executor_mem: str (e.g: 4g) = Memory of the executor node.
             driver_mem: str (e.g: 4g) = Memory of the Driver node.
         """
+        if num_executors==None:
+            num_executors= self.num_executors
+        if num_cores_per_executor==None:
+            num_cores_per_executor= self.num_cores_per_executor
         if executor_mem==None:
-            executor_mem = self.executor_mem
+            executor_mem= self.executor_mem
         if driver_mem==None:
             driver_mem = self.driver_mem
             
-        spark =  ( 
+        spark = ( 
             SparkSession.builder 
                 .appName("Read FRACTAL files") 
                 .config("spark.hadoop.fs.s3a.fast.upload", "true")
                 .config("spark.hadoop.fs.s3a.multipart.size", "104857600")
                 .config("spark.executor.memory",executor_mem )
                 .config("spark.driver.memory", driver_mem )
+                .config("spark.executor.instances", str(num_executors))
+                .config("spark.executor.cores", str(num_cores_per_executor))
                 .getOrCreate()
             )
         self.spark = spark
         
         print("Session Created!")
-        print(f"- executor memory= {self.executor_mem}")
-        print(f"- driver memory= {self.driver_mem}")
+        print(f" Number of executors: {num_executors}")
+        print(f" Number of cores per executor: {num_cores_per_executor}")
+        print(f"- executor memory= {executor_mem}")
+        print(f"- driver memory= {driver_mem}")
         
           
     def _create_local_session(self):
