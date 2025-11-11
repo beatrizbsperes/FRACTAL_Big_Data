@@ -91,6 +91,8 @@ class Sparker:
                 .config("spark.hadoop.fs.s3a.threads.keepalivetime", "60000") \
                 .config("spark.hadoop.fs.s3a.multipart.purge.age", "30000000") \
                 .config("spark.hadoop.fs.s3a.connection.establish.timeout", "30000") \
+                .config("spark.driver.memory", "8g") \
+                .config("spark.executor.memory", "8g") \
                 .getOrCreate()
                 
         spark.sparkContext.setLogLevel("ERROR")
