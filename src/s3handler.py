@@ -29,20 +29,21 @@ class Sparker:
         self.access_key = access_key
         self.secret_key = secret_key
         self.spark = None
-        self.num_cores_per_executor = "8"
+        self.num_cores_per_executor = "4"
         self.num_executors = "7"
-        self.executor_mem = "4g"
-        self.driver_mem = "4g"
+        self.executor_mem = "28g"
+        self.driver_mem = "8g"
     
         
-    def _create_on_cluster_session(self, num_executors='8', num_cores_per_executor='7',
-                                   executor_mem="4g", driver_mem="4g"):
+    def _create_on_cluster_session(self, num_executors='16', num_cores_per_executor='3',
+                                            executor_mem="14g", driver_mem="4g"):
         """
         Create a session to be run on the AWS EC2 cluster.
         
         Args:
-            num_executors (int): Number of executors
-            num_cores_per_executor (int): Number of cores per executor
+            num_executors (int): Number of executors ot create the task. 
+            num_cores_per_executor (int): 
+                Number of cores per executor. It can be also seen as the number of threads. 
             executor_mem: str (e.g: 4g) = Memory of the executor node.
             driver_mem: str (e.g: 4g) = Memory of the Driver node.
         """
