@@ -25,15 +25,16 @@ from sparkmeasure import StageMetrics
 import argparse
 from loguru import logger
 import io
+import time
+import numpy as np
 ## -------------------------------------------------------------------------------
+
 class Sparker:
     """
     A class to handle Spark operations on S3 parquet files.
     """
     
-    def __init__(self, access_key=None, secret_key=None,
-                 num_executors='16', num_cores_per_executor='3',
-                 executor_mem="14g", driver_mem="4g"):
+    def __init__(self, access_key=None, secret_key=None):
         """
         Initialize Sparker with S3 credentials and file information.
         Access key and Secret key are only necessary when not running inside the AWS EC2 cluster.
@@ -45,34 +46,45 @@ class Sparker:
         self.access_key = access_key
         self.secret_key = secret_key
         self.spark = None
-        self.num_cores_per_executor = num_cores_per_executor
-        self.num_executors = num_executors
-        self.executor_mem = executor_mem
-        self.driver_mem = driver_mem
     
-    def _create_on_cluster_session(self):
+    def _create_on_cluster_session(self, 
+                    num_executors='16', num_cores_per_executor='3',
+                    executor_mem="14g", driver_mem="4g"):
         """
         Create a session to be run on the AWS EC2 cluster.
         
+        Args:
+            Num_cores_per_executor = Number of cores 
+            Number_executors = Number of executors per core
+            Executor_mem = Memory per core
+            Driver_Mem = Memory of Driver
         """
-        # if num_executors==None:
-        #     num_executors= self.num_executors
-        # if num_cores_per_executor==None:
-        #     num_cores_per_executor= self.num_cores_per_executor
-        # if executor_mem==None:
-        #     executor_mem= self.executor_mem
-        # if driver_mem==None:
-        #     driver_mem = self.driver_mem
-            
+        self.num_cores_per_executor = num_cores_per_executor
+        self.num_executors = num_executors
+        self.executor_mem = executor_mem
+        self.driver_mem = driver_mem  
+        
         spark = ( 
             SparkSession.builder 
                 .appName("Read FRACTAL files") 
                 .config("spark.hadoop.fs.s3a.fast.upload", "true")
                 .config("spark.hadoop.fs.s3a.multipart.size", "104857600")
-                .config("spark.executor.memory",executor_mem )
-                .config("spark.driver.memory", driver_mem )
-                .config("spark.executor.instances", str(num_executors))
-                .config("spark.executor.cores", str(num_cores_per_executor))
+                .config("spark.executor.memory", str(self.executor_mem ))
+                .config("spark.driver.memory", str(self.driver_mem ))
+                .config("spark.executor.instances", str(self.num_executors))
+                .config("spark.executor.cores", str(self.num_cores_per_executor))
+                .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") ## serialize 
+                .config("spark.sql.adaptive.enabled", "true") \
+                .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
+                .config("spark.sql.adaptive.skewJoin.enabled", "true") \
+                .config("spark.sql.adaptive.join.enabled", "true") \
+                .config("spark.sql.adaptive.shuffle.targetPostShuffleInputSize", "128MB") \
+                .config("spark.sql.adaptive.localShuffleReader.enabled", "true") \
+                .config("spark.sql.adaptive.coalescePartitions.minPartitionNum", "2") \
+                .config("spark.sql.adaptive.advisoryPartitionSizeInBytes", "128MB") \
+                ##.config("spark.sql.shuffle.partitions", str((num_executors * num_cores_per_executor)* 2)) # 2 partitions per core ##shitzi
+                .config("spark.sql.files.maxPartitionBytes", "268435456")  # 256MB
+                .config("spark.driver.maxResultSize", "1g")
                 .getOrCreate()
             )
         self.spark = spark
@@ -84,12 +96,20 @@ class Sparker:
         print(f"- driver memory= {driver_mem}")
         
           
-    def _create_local_session(self):
+    def _create_local_session(self, 
+                    num_executors='16', num_cores_per_executor='3',
+                    executor_mem="14g", driver_mem="4g"):
         """
         Try to create a local session to run in a notebook
         """
+        self.num_cores_per_executor = num_cores_per_executor
+        self.num_executors = num_executors
+        self.executor_mem = executor_mem
+        self.driver_mem = driver_mem 
+         
         access_key = self.access_key
         access_secret = self.secret_key
+        
         spark = SparkSession.builder \
                 .appName("Local Session my friend") \
                 .master("local[4]") \
@@ -98,11 +118,16 @@ class Sparker:
                 .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
                 .config("spark.hadoop.fs.s3a.access.key", access_key) \
                 .config("spark.hadoop.fs.s3a.secret.key", access_secret) \
+                .config("spark.executor.instances", str(self.num_executors)) \
+                .config("spark.executor.cores", str(self.num_cores_per_executor)) \
+                .config("spark.executor.memory", str(self.executor_mem)) \
+                .config("spark.driver.memory", str(self.driver_mem))\
                 .config("spark.hadoop.fs.s3a.aws.credentials.provider", "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider") \
                 .config("spark.hadoop.fs.s3a.connection.timeout", "50000") \
                 .config("spark.hadoop.fs.s3a.threads.keepalivetime", "60000") \
                 .config("spark.hadoop.fs.s3a.multipart.purge.age", "30000000") \
                 .config("spark.hadoop.fs.s3a.connection.establish.timeout", "30000") \
+                .config("spark.driver.maxResultSize", "200m") \
                 .getOrCreate()
                 
         spark.sparkContext.setLogLevel("ERROR")
@@ -225,12 +250,18 @@ class FeatureEngineering():
         Features from LiDAR returns.
         Key for vegetation vs building classification.
         """
+        from pyspark.sql.functions import when, col
+        
         self.df = self.df.withColumn("return_ratio", 
-                                    col("ReturnNumber") / col("NumberOfReturns")) \
-                         .withColumn("is_single_return", 
-                                   (col("NumberOfReturns") == 1).cast("int")) \
-                         .withColumn("is_last_return",
-                                   (col("ReturnNumber") == col("NumberOfReturns")).cast("int"))
+                                    when(col("NumberOfReturns") != 0, 
+                                        col("ReturnNumber") / col("NumberOfReturns"))
+                                    .otherwise(0.0)) \
+                        .withColumn("is_single_return", 
+                                (col("NumberOfReturns") == 1).cast("int")) \
+                        .withColumn("is_last_return",
+                                when(col("NumberOfReturns") != 0,
+                                        (col("ReturnNumber") == col("NumberOfReturns")).cast("int"))
+                                .otherwise(0))
         return self.df
     
     def vegetation_index(self):
@@ -263,11 +294,47 @@ class FeatureEngineering():
         self.drop_xyz()
         return self.df 
 
+
+def retrieve_file_names(path, percentage = None):
+    """
+    Match .parquet and return a list. If percentage, then return a sampled list.
+    
+    Args:
+        lines: Path for the .txt file.
+    Percentage: float 0-1
+        The percentage of the total files
+    """
+    import re 
+    from random import sample
+    import random 
+    random.seed(420)
+    with open(path, 'r')  as file:
+        lines = file.readlines()
+    
+    final_list =[]
+    for l in lines:
+        split =  l.split()
+        if len(split)>=1:
+            filename = split[-1]
+        match = re.search(r'([A-Z0-9_-]+.parquet)', filename)
+        if match:
+            final_list.append(filename)
+    
+    if percentage is not None:
+        if percentage >= 1.0:
+            raise ValueError("Percentage should be a float value between 0 and 1.")
+        total_num = len(final_list)
+        perc = int(percentage*total_num)
+        return sample(final_list, k=perc)
+    
+    else: 
+        return final_list   
 ## ------------------------------------------------------------------------------
 
    
 # Main execution
 if __name__ == "__main__":
+    
     ### argparse 
     parser = argparse.ArgumentParser(description="Key S3 Access args")
     parser.add_argument("--access-key",
@@ -282,33 +349,44 @@ if __name__ == "__main__":
                         type=str, required=False, help="Executor memory (e.g., 4g)")
     parser.add_argument("--driver-mem", 
                         type=str, required=False, help="Driver memory (e.g., 4g)")
+    parser.add_argument("--sampling", 
+                        type=float, required=False, help="Percentage of the Dataset to be sampled")
     args = parser.parse_args()
 
-    print(args)
+    ##print(args)
     access_key = args.access_key
     access_secret = args.access_secret
     num_executors=args.num_executors
     num_cores_per_executor=args.num_cores_per_executor
     executor_mem=args.executor_mem
     driver_mem=args.driver_mem
+    percentage = args.sampling
     
     ## Start Logger and name of the file 
     datetime_now = datetime.today()
-    metrics_file = f"{datetime_now.strftime('%d-%m-%Y_%Hh-%Mmin')}-metrics.txt"
+    metrics_file = f"{datetime_now.strftime('%d-%m-%Y_%Hh-%Mmin')}-{num_executors}ex-metrics.txt"
     bucket_end ="metrics" ### "s3a://ubs-homes/erasmus/emanuel/" 
     logger.add(f"{bucket_end}/{metrics_file}.log")
     
-    
-    ## Fraction of Sampling for beggining exploration
-    #fraction_init = 0.01 #5% of the dataset 
-    
+    ## add logger
+    logger.info(f"Num Executors:{num_executors}")
+    logger.info(f"Num Cores: {num_cores_per_executor}")
+    logger.info(f"Executor memory: {executor_mem}")
+    logger.info(f"Driver memory: {driver_mem}")
+    logger.info(f"Percentage: {percentage}")
+        
     ## Name of the buckets
-    bucket_name = "ubs-datasets/FRACTAL/data" 
-    path_train = ["train/TRAIN-1200_6136-008972557.parquet"]
-    #path_validation = "validation/*.parquet"
-    path_test = ["train/TRAIN-0436_6399-002955400.parquet"]
-    #path_test = "test/*.parquet"
+    ## Look for the .txt file containing the name of the files
+    list_train = retrieve_file_names("files_name/train_files.txt",percentage=percentage)
+    list_test = retrieve_file_names("files_name/test_files.txt", percentage=percentage)
+    list_val = retrieve_file_names("files_name/val_files.txt", percentage=percentage)
+    list_train = [f"train/{file}" for file in list_train]
+    list_test = [f"test/{file}" for file in list_test]
+    list_val = [f"val/{file}" for file in list_val]
     
+    logger.info(f"Number of Train files: {len(list_train)} | Test {len(list_test)} | Val {len(list_val)}")
+    
+    bucket_name = "ubs-datasets/FRACTAL/data"
     
     ## First parquet cols to be select in order to reduce computational 
     parquet_cols = ["xyz","Intensity","Classification","Red","Green","Blue","Infrared","ReturnNumber","NumberOfReturns"]
@@ -316,47 +394,52 @@ if __name__ == "__main__":
     # Create Sparker instance
     sparker = Sparker(
         access_key=args.access_key,
-        secret_key=args.access_secret,
-        num_executors=args.num_executors,
-        num_cores_per_executor=args.num_cores_per_executor,
-        executor_mem=args.executor_mem,
-        driver_mem=args.driver_mem
+        secret_key=args.access_secret
     )
     
     ## Create Session 
-    sparker._create_local_session()
+    sparker._create_local_session(
+                num_executors=args.num_executors,
+                num_cores_per_executor=args.num_cores_per_executor,
+                executor_mem=args.executor_mem,
+                driver_mem=args.driver_mem
+                )
     
     # create cluster session
-    # sparker._create_on_cluster_session()
+    # sparker._create_on_cluster_session(
+    #             num_executors=args.num_executors,
+    #             num_cores_per_executor=args.num_cores_per_executor,
+    #             executor_mem=args.executor_mem,
+    #             driver_mem=args.driver_mem
+    # )
 
-    
     ## Create a taskmetrics for better understand of how the cluster works 
-    ##taskmetrics = TaskMetrics(sparker.spark)
     stagemetrics = StageMetrics(sparker.spark)
     
-    ## START TASK METRICS                     
-    #taskmetrics.begin() 
+    ## START TASK METRICS 
     stagemetrics.begin()  
+    
+    ## Total time
+    start_time = time.time()
     
     ## 1. Read the parquet function 
     logger.info(f"Opening df train")
     df_train = sparker.read_parquet(bucket_name,
-                                    path_train,
+                                    list_train,
                                     read_all=False) \
-                                    .select(*parquet_cols) \
-                                    #.sample(fraction = fraction_init)
+                                    .select(*parquet_cols) 
     
     # df_val = sparker.read_parquet(bucket_name,
     #                                 path_validation,
     #                                 read_all=False) \
     #                                 .select(*parquet_cols) \
-    #                                 .sample(fraction = fraction_init)      
+    #                                 .sample(fraction = fraction_init) 
+         
     logger.info(f"Opening df test")
     df_test = sparker.read_parquet(bucket_name,
-                                    path_test,
+                                    list_test,
                                     read_all=False) \
-                                    .select(*parquet_cols) \
-                                    #.sample(fraction = fraction_init)
+                                    .select(*parquet_cols) 
     
                         
     ## PreProcessing
@@ -370,12 +453,16 @@ if __name__ == "__main__":
     
     ## Feature Engineering
     logger.info(f"Feature Engineering | TRAIN")
+    feature_eng_time = time.time()
+    
     engfeature = FeatureEngineering(df_train)
     df_train = engfeature.apply_all()
     
     logger.info(f"Feature Engineering | TEST")
     engfeature_test = FeatureEngineering(df_test)
     df_test = engfeature_test.apply_all()
+    
+    logger.info(f"TIME: Feature Engineering: {np.abs(time.time()- feature_eng_time):.4f}")
     
     # 2. Prepare the variables for the model  
     logger.info(f"Feature Cols | TRAIN ")
@@ -392,17 +479,23 @@ if __name__ == "__main__":
     rf = RandomForestClassifier(featuresCol="scaled_features", 
                                 labelCol="Classification",
                                 bootstrap=True, 
-                                numTrees=60,
+                                numTrees=50,
                                 maxDepth=10)
 
     # 4. Create pipeline
+    logger.info(f"Pipeline")
+    
     pipeline = Pipeline(stages=[assembler, scaler, rf])
 
+    pipe_time = time.time()
     # 5. Train on ALL training data (distributed automatically)
     model = pipeline.fit(df_train)
-
+    logger.info(f"TIME: Pipeline Fit: {np.abs(time.time()-pipe_time):.5f}")
+    
     # 6. Evaluate the model 
+    pred_time = time.time()
     predictions = model.transform(df_test)
+    logger.info(f"TIME: Inference: {np.abs(time.time()-pred_time):.5f}")
     
     # 7. Test the Model
     evaluator = MulticlassClassificationEvaluator(
@@ -412,15 +505,11 @@ if __name__ == "__main__":
                     )
 
     accuracy = evaluator.evaluate(predictions)
-    print(f"Test Accuracy: {accuracy :.3f}")
+    logger.info(f"Test Accuracy: {accuracy :.3f}")
     
-    ## spark METRICS
-        ## END MEASURING
+    ## END MEASURING
     stagemetrics.end()
-    #taskmetrics.end()
-    ## Print reports
-    logger.info(f"{stagemetrics.print_report()}")
-    logger.info(f"{stagemetrics.print_memory_report()}")
+    logger.info(f"TIME: Final Time: {np.abs(time.time() - start_time):.5f}")
     
     
     ## Make the Daily dir to save the output of the print statement
@@ -428,12 +517,7 @@ if __name__ == "__main__":
     
     ## Save the data at 
     logger.info(f" The taskmetric is being saved at: {os.path.join(bucket_end, metrics_file)}")
-    # taskmetrics.save_data(os.path.join(bucket_end, metrics_file))
-    # Save the metrics to file
-    # with open(os.path.join(bucket_end, metrics_file), 'w') as f:
-    #     # Get metrics as dictionary
-    #     metrics = stagemetrics
-    #     f.write(str(metrics))
+
   
     with open(os.path.join(bucket_end, metrics_file), 'w') as f:
         # Acuracy of the model
@@ -466,4 +550,4 @@ if __name__ == "__main__":
     print("\n=====================================================\n")
     
     # Close session
-    sparker.close()
+    sparker.close() 

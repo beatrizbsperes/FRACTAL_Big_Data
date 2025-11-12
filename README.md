@@ -31,3 +31,6 @@ on the env:
 python Standard_CLI_Sparker.py  --access-key your_key --access-secret your_secret
 ```
 
+## PATH
+/home/efs/erasmus/emanuel/files
+s3://ubs-homes/erasmus/emanuel/files/
