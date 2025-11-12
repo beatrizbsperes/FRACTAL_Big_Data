@@ -24,4 +24,10 @@ ACCESS_SECRET=your_secret
 ```
 
 
+## How to Run Starndar_cli_sparker.py
+
+on the env: 
+```bash
+python Standard_CLI_Sparker.py  --access-key your_key --access-secret your_secret
+```
 

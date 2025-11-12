@@ -23,6 +23,7 @@ dependencies = [
     # "dask>=2024.5.0",
     "ipykernel>=7.0.1",
     "python-dotenv",
+    "loguru",
     "sparkmeasure"
 ]
 
