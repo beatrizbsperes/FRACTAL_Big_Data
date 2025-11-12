@@ -85,6 +85,8 @@ class Sparker:
                 .master("local[4]") \
                 .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.1") \
                 .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
+                .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.1,ch.cern.sparkmeasure:spark-measure_2.13:0.27") \
+                .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
                 .config("spark.hadoop.fs.s3a.access.key", os.environ['ACCESS_KEY']) \
                 .config("spark.hadoop.fs.s3a.secret.key", os.environ['ACCESS_SECRET']) \
                 .config("spark.hadoop.fs.s3a.aws.credentials.provider", "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider") \

@@ -1,10 +1,9 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, sum as spark_sum, when, input_file_name
 from functools import reduce
-import sys
 from pyspark.ml import Pipeline
 from pyspark.ml.feature import VectorAssembler, StandardScaler
-from pyspark.ml.classification import LogisticRegression, RandomForestClassifier
+from pyspark.ml.classification import RandomForestClassifier
 from sparkmeasure import TaskMetrics
 import os
 from datetime import datetime
@@ -24,15 +23,17 @@ from pyspark.sql.functions import (
 from pyspark.sql.functions import coalesce, lit
 from sparkmeasure import StageMetrics
 import argparse
-import sys
 from loguru import logger
+import io
 ## -------------------------------------------------------------------------------
 class Sparker:
     """
     A class to handle Spark operations on S3 parquet files.
     """
     
-    def __init__(self, access_key=None, secret_key=None):
+    def __init__(self, access_key=None, secret_key=None,
+                 num_executors='16', num_cores_per_executor='3',
+                 executor_mem="14g", driver_mem="4g"):
         """
         Initialize Sparker with S3 credentials and file information.
         Access key and Secret key are only necessary when not running inside the AWS EC2 cluster.
@@ -44,32 +45,24 @@ class Sparker:
         self.access_key = access_key
         self.secret_key = secret_key
         self.spark = None
-        self.num_cores_per_executor = "4"
-        self.num_executors = "7"
-        self.executor_mem = "28g"
-        self.driver_mem = "8g"
+        self.num_cores_per_executor = num_cores_per_executor
+        self.num_executors = num_executors
+        self.executor_mem = executor_mem
+        self.driver_mem = driver_mem
     
-        
-    def _create_on_cluster_session(self, num_executors='16', num_cores_per_executor='3',
-                                            executor_mem="14g", driver_mem="4g"):
+    def _create_on_cluster_session(self):
         """
         Create a session to be run on the AWS EC2 cluster.
         
-        Args:
-            num_executors (int): Number of executors ot create the task. 
-            num_cores_per_executor (int): 
-                Number of cores per executor. It can be also seen as the number of threads. 
-            executor_mem: str (e.g: 4g) = Memory of the executor node.
-            driver_mem: str (e.g: 4g) = Memory of the Driver node.
         """
-        if num_executors==None:
-            num_executors= self.num_executors
-        if num_cores_per_executor==None:
-            num_cores_per_executor= self.num_cores_per_executor
-        if executor_mem==None:
-            executor_mem= self.executor_mem
-        if driver_mem==None:
-            driver_mem = self.driver_mem
+        # if num_executors==None:
+        #     num_executors= self.num_executors
+        # if num_cores_per_executor==None:
+        #     num_cores_per_executor= self.num_cores_per_executor
+        # if executor_mem==None:
+        #     executor_mem= self.executor_mem
+        # if driver_mem==None:
+        #     driver_mem = self.driver_mem
             
         spark = ( 
             SparkSession.builder 
@@ -91,10 +84,12 @@ class Sparker:
         print(f"- driver memory= {driver_mem}")
         
           
-    def _create_local_session(self, access_key, access_secret):
+    def _create_local_session(self):
         """
         Try to create a local session to run in a notebook
         """
+        access_key = self.access_key
+        access_secret = self.secret_key
         spark = SparkSession.builder \
                 .appName("Local Session my friend") \
                 .master("local[4]") \
@@ -279,15 +274,27 @@ if __name__ == "__main__":
                         required=False, help="ACCESS_KEY")
     parser.add_argument("--access-secret",
                         required=False, help="ACCESS_SECRET")
+    parser.add_argument("--num-executors", 
+                        type=str, required=False, help="Number of Spark Executors")
+    parser.add_argument("--num-cores-per-executor", 
+                        type=str, required=False, help="Cores per executor")
+    parser.add_argument("--executor-mem", 
+                        type=str, required=False, help="Executor memory (e.g., 4g)")
+    parser.add_argument("--driver-mem", 
+                        type=str, required=False, help="Driver memory (e.g., 4g)")
     args = parser.parse_args()
 
     print(args)
     access_key = args.access_key
     access_secret = args.access_secret
+    num_executors=args.num_executors
+    num_cores_per_executor=args.num_cores_per_executor
+    executor_mem=args.executor_mem
+    driver_mem=args.driver_mem
     
     ## Start Logger and name of the file 
     datetime_now = datetime.today()
-    metrics_file = f"{datetime_now.strftime("%d-%m-%Y_%Hh-%Mmin")}-metrics.txt"
+    metrics_file = f"{datetime_now.strftime('%d-%m-%Y_%Hh-%Mmin')}-metrics.txt"
     bucket_end ="metrics" ### "s3a://ubs-homes/erasmus/emanuel/" 
     logger.add(f"{bucket_end}/{metrics_file}.log")
     
@@ -307,11 +314,21 @@ if __name__ == "__main__":
     parquet_cols = ["xyz","Intensity","Classification","Red","Green","Blue","Infrared","ReturnNumber","NumberOfReturns"]
 
     # Create Sparker instance
-    sparker = Sparker()
+    sparker = Sparker(
+        access_key=args.access_key,
+        secret_key=args.access_secret,
+        num_executors=args.num_executors,
+        num_cores_per_executor=args.num_cores_per_executor,
+        executor_mem=args.executor_mem,
+        driver_mem=args.driver_mem
+    )
     
     ## Create Session 
-    sparker._create_local_session(access_key = access_key, 
-                                  access_secret = access_secret)
+    sparker._create_local_session()
+    
+    # create cluster session
+    # sparker._create_on_cluster_session()
+
     
     ## Create a taskmetrics for better understand of how the cluster works 
     ##taskmetrics = TaskMetrics(sparker.spark)
@@ -372,14 +389,14 @@ if __name__ == "__main__":
     
 
     # 3. Define model
-    lr = LogisticRegression(
-            featuresCol="scaled_features",
-            labelCol="Classification",
-            maxIter=10
-        )
+    rf = RandomForestClassifier(featuresCol="scaled_features", 
+                                labelCol="Classification",
+                                bootstrap=True, 
+                                numTrees=60,
+                                maxDepth=10)
 
     # 4. Create pipeline
-    pipeline = Pipeline(stages=[assembler, scaler, lr])
+    pipeline = Pipeline(stages=[assembler, scaler, rf])
 
     # 5. Train on ALL training data (distributed automatically)
     model = pipeline.fit(df_train)
@@ -412,12 +429,40 @@ if __name__ == "__main__":
     ## Save the data at 
     logger.info(f" The taskmetric is being saved at: {os.path.join(bucket_end, metrics_file)}")
     # taskmetrics.save_data(os.path.join(bucket_end, metrics_file))
-    ## Save the metrics to file
+    # Save the metrics to file
+    # with open(os.path.join(bucket_end, metrics_file), 'w') as f:
+    #     # Get metrics as dictionary
+    #     metrics = stagemetrics
+    #     f.write(str(metrics))
+  
     with open(os.path.join(bucket_end, metrics_file), 'w') as f:
-        # Get metrics as dictionary
-        metrics = stagemetrics
-        f.write(str(metrics))
-        
+        # Acuracy of the model
+        f.write("=== Model Accuracy on Test Set ===\n")
+        f.write("\n")
+        f.write(str(round(accuracy, 3)))
+        f.write("\n")
+
+        # Cluster information
+        f.write("\n")
+        f.write("=== Cluster Information ===\n\n")
+        f.write(f"Number of Executors: {args.num_executors}\n")
+        f.write(f"Cores per Executor: {args.num_cores_per_executor}\n")
+        f.write(f"Executor Memory: {args.executor_mem}\n")
+        f.write(f"Driver Memory: {args.driver_mem}\n")
+
+        old_stdout = sys.stdout
+        sys.stdout = mystdout = io.StringIO()
+        stagemetrics.print_report()
+        stagemetrics.print_memory_report()
+        sys.stdout = old_stdout
+        metrics_output = mystdout.getvalue()
+
+        # Memory report and report
+        f.write("\n")
+        f.write("=== Report and Memory Report ===\n")
+        f.write(metrics_output)
+        f.write("\n")
+
     print("\n=====================================================\n")
     
     # Close session
