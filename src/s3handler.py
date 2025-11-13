@@ -29,21 +29,20 @@ class Sparker:
         self.access_key = access_key
         self.secret_key = secret_key
         self.spark = None
-        self.num_cores_per_executor = "4"
+        self.num_cores_per_executor = "8"
         self.num_executors = "7"
-        self.executor_mem = "28g"
-        self.driver_mem = "8g"
+        self.executor_mem = "4g"
+        self.driver_mem = "4g"
     
         
-    def _create_on_cluster_session(self, num_executors='16', num_cores_per_executor='3',
-                                            executor_mem="14g", driver_mem="4g"):
+    def _create_on_cluster_session(self, num_executors='8', num_cores_per_executor='7',
+                                   executor_mem="4g", driver_mem="4g"):
         """
         Create a session to be run on the AWS EC2 cluster.
         
         Args:
-            num_executors (int): Number of executors ot create the task. 
-            num_cores_per_executor (int): 
-                Number of cores per executor. It can be also seen as the number of threads. 
+            num_executors (int): Number of executors
+            num_cores_per_executor (int): Number of cores per executor
             executor_mem: str (e.g: 4g) = Memory of the executor node.
             driver_mem: str (e.g: 4g) = Memory of the Driver node.
         """
@@ -85,8 +84,6 @@ class Sparker:
                 .master("local[4]") \
                 .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.1") \
                 .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
-                .config("spark.jars.packages", "org.apache.hadoop:hadoop-aws:3.3.1,ch.cern.sparkmeasure:spark-measure_2.13:0.27") \
-                .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
                 .config("spark.hadoop.fs.s3a.access.key", os.environ['ACCESS_KEY']) \
                 .config("spark.hadoop.fs.s3a.secret.key", os.environ['ACCESS_SECRET']) \
                 .config("spark.hadoop.fs.s3a.aws.credentials.provider", "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider") \
@@ -94,6 +91,8 @@ class Sparker:
                 .config("spark.hadoop.fs.s3a.threads.keepalivetime", "60000") \
                 .config("spark.hadoop.fs.s3a.multipart.purge.age", "30000000") \
                 .config("spark.hadoop.fs.s3a.connection.establish.timeout", "30000") \
+                .config("spark.driver.memory", "8g") \
+                .config("spark.executor.memory", "8g") \
                 .getOrCreate()
                 
         spark.sparkContext.setLogLevel("ERROR")

@@ -1,3 +1,4 @@
+# spark-submit --master yarn --packages ch.cern.sparkmeasure:spark-measure_2.12:0.27 --deploy-mode client rodar2.py   --num-executors 32   --num-cores-per-executor 2   --executor-mem 8g   --driver-mem 4g --sampling 0.0001
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, sum as spark_sum, when, input_file_name
 from functools import reduce
@@ -361,15 +362,7 @@ if __name__ == "__main__":
     executor_mem=args.executor_mem
     driver_mem=args.driver_mem
     percentage = args.sampling
-    
-    ## Start Logger and name of the file 
-    datetime_now = datetime.today()
-    metrics_file = f"{datetime_now.strftime('%d-%m-%Y_%Hh-%Mmin')}-{num_executors}ex-metrics.txt"
-    bucket_end = "s3://ubs-homes/erasmus/emanuel/" 
-    mother= "/home/efs/erasmus/emanuel/files"
-    logger.add(f"{mother}/{metrics_file}.log")
-    
-    
+        
     ## add logger
     logger.info(f"Num Executors:{num_executors}")
     logger.info(f"Num Cores: {num_cores_per_executor}")
@@ -379,6 +372,7 @@ if __name__ == "__main__":
         
     ## Name of the buckets
     ## Look for the .txt file containing the name of the files
+    mother= "/home/efs/erasmus/beatriz/files"
     list_train = retrieve_file_names(f"{mother}/train_files.txt",percentage=percentage)
     list_test = retrieve_file_names(f"{mother}/test_files.txt", percentage=percentage)
     list_val = retrieve_file_names(f"{mother}/val_files.txt", percentage=percentage)
@@ -451,13 +445,18 @@ if __name__ == "__main__":
     
     engfeature = FeatureEngineering(df_train)
     df_train = engfeature.apply_all()
+    logger.info(f"Total Number of training rows: {df_train.count()}")
     
     logger.info(f"Feature Engineering | TEST")
     engfeature_test = FeatureEngineering(df_test)
     df_test = engfeature_test.apply_all()
+    logger.info(f"Total Number of training rows: {df_test.count()}")
     
     logger.info(f"TIME: Feature Engineering: {np.abs(time.time()- feature_eng_time):.4f}")
-    
+
+    total_rows = df_train.count() + df_test.count()
+    logger.info(f"Total Number of rows: {total_rows}")
+
     # 2. Prepare the variables for the model  
     logger.info(f"Feature Cols | TRAIN ")
     feature_cols = df_train.drop("Classification").columns   
@@ -505,12 +504,17 @@ if __name__ == "__main__":
     stagemetrics.end()
     logger.info(f"TIME: Final Time: {np.abs(time.time() - start_time):.5f}")
     
-    
-    ## Make the Daily dir to save the output of the print statement
-    save_bucket = "s3://ubs-homes/erasmus/emanuel/"
-    mother_efs = "/home/efs/erasmus/emanuel/metrics/"
-    save_dir = './'
-    os.makedirs(mother_efs,exist_ok=True)
+     ## Start Logger and name of the file 
+    datetime_now = datetime.today()
+    metrics_file = f"{np.abs(time.time() - start_time)}total_time--{total_rows}rows--{num_executors}ex-metrics.txt"
+    bucket_end = "/home/efs/erasmus/beatriz/metrics" 
+    logger.add(f"{mother}/{metrics_file}.log")
+
+    # ## Make the Daily dir to save the output of the print statement
+    # save_bucket = "s3://ubs-homes/erasmus/beatriz/"
+    # mother_efs = "/home/efs/erasmus/beatriz/metrics/"
+    # save_dir = './'
+    # os.makedirs(mother_efs,exist_ok=True)
     
     ## Save the data at 
     logger.info(f" The taskmetric is being saved at: {os.path.join(mother, metrics_file)}")
@@ -521,6 +525,20 @@ if __name__ == "__main__":
         f.write("=== Model Accuracy on Test Set ===\n")
         f.write("\n")
         f.write(str(round(accuracy, 3)))
+        f.write("\n")
+
+        # Dataset information
+        f.write("\n")
+        f.write("=== Dataset Information ===\n")
+        f.write("\n")
+        f.write((f"Total Number of Rows: {total_rows}"))
+        f.write("\n")
+
+        # Time count
+        f.write("\n")
+        f.write("=== Time Count ===\n")
+        f.write("\n")
+        f.write((f"TIME: Final Time: {np.abs(time.time() - start_time):.5f}"))
         f.write("\n")
 
         # Cluster information
