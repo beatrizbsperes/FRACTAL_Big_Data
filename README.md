@@ -34,3 +34,12 @@ python Standard_CLI_Sparker.py  --access-key your_key --access-secret your_secre
 ## PATH
 /home/efs/erasmus/emanuel/files
 s3://ubs-homes/erasmus/emanuel/files/
+
+## Bash command
+activate
+chmod +x myscript.sh
+
+run
+./myscript.sh
+or bash 
+bash myscript.sh

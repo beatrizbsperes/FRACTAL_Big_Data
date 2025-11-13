@@ -367,7 +367,7 @@ if __name__ == "__main__":
     
     ## Start Logger and name of the file 
     datetime_now = datetime.today()
-    metrics_file = f"{datetime_now.strftime('%d-%m_%Hh-%Mmin')}-{percentage}perc-{num_executors}ex-metrics"
+    metrics_file = f"{percentage}perc-{num_executors}ex-{num_cores_per_executor}core-metrics"
     
     # Get the directory where this script is located
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -473,6 +473,12 @@ if __name__ == "__main__":
     
     logger.info(f"TIME: Feature Engineering: {np.abs(time.time()- feature_eng_time):.4f}")
     
+    ## TOTAL ROWS
+    train_rows = df_train.count()
+    test_rows = df_test.count()
+    logger.info(f"ROWS: TRAIN: {train_rows}")
+    logger.info(f"ROWS: TEST: {test_rows}")
+    
     # 2. Prepare the variables for the model  
     logger.info(f"Feature Cols | TRAIN ")
     feature_cols = df_train.drop("Classification").columns   
@@ -553,6 +559,7 @@ if __name__ == "__main__":
         
 
     ## Save the data at 
+    metrics_file = f"{metrics_file}.txt"
     logger.info(f" The taskmetric is being saved at: {os.path.join(save_dir, metrics_file)}")
     with open(os.path.join(save_dir, metrics_file), 'w') as f:
         # Acuracy of the model
@@ -561,6 +568,12 @@ if __name__ == "__main__":
         f.write(str(round(accuracy, 3)))
         f.write("\n")
 
+        ## TOTAL ROWS
+        f.write("TOTAL ROWS")
+        f.write(f"TRAIN: {train_rows}")
+        f.write(f"TEST: {test_rows}")
+        f.write("\n")
+        
         # Cluster information
         f.write("\n")
         f.write("=== Cluster Information ===\n\n")
@@ -585,5 +598,5 @@ if __name__ == "__main__":
     print("\n=====================================================\n")
     
     logger.info(f"Concluded!")
-    # Close session
+        # Close session
     sparker.close() 
