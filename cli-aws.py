@@ -27,6 +27,8 @@ from loguru import logger
 import io
 import time
 import numpy as np
+import pandas as pd
+        
 ## -------------------------------------------------------------------------------
 
 class Sparker:
@@ -155,7 +157,8 @@ class Sparker:
         if isinstance(path, list):
             self.file_path = [f"s3a://{bucket_name}/{p}" for p in path]
         
-        print(f"Reading from: {self.file_path}")
+        if len(self.file_path)<10:
+            print(f"Reading from: {self.file_path}")
         
         return self.spark.read \
                 .option("header", "true") \
@@ -364,12 +367,20 @@ if __name__ == "__main__":
     
     ## Start Logger and name of the file 
     datetime_now = datetime.today()
-    metrics_file = f"{datetime_now.strftime('%d-%m-%Y_%Hh-%Mmin')}-{num_executors}ex-metrics.txt"
-    bucket_end = "s3://ubs-homes/erasmus/emanuel/" 
+    metrics_file = f"{datetime_now.strftime('%d-%m_%Hh-%Mmin')}-{percentage}perc-{num_executors}ex-metrics"
+    
+    # Get the directory where this script is located
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    save_dir = os.path.join(script_dir, "metrics")
+    os.makedirs(save_dir, exist_ok=True)
+    
+    ## Create Logger
+    logger.add(f"{save_dir}/{metrics_file}.log")
+    logger.info(f"All the files are being saved at: {save_dir}")
+    
+    # path of the .txt file
     mother= "/home/efs/erasmus/emanuel/files"
-    logger.add(f"{mother}/{metrics_file}.log")
-    
-    
+        
     ## add logger
     logger.info(f"Num Executors:{num_executors}")
     logger.info(f"Num Cores: {num_cores_per_executor}")
@@ -379,12 +390,9 @@ if __name__ == "__main__":
         
     ## Name of the buckets
     ## Look for the .txt file containing the name of the files
-    list_train = retrieve_file_names(f"{mother}/train_files.txt",percentage=percentage)
-    list_test = retrieve_file_names(f"{mother}/test_files.txt", percentage=percentage)
-    list_val = retrieve_file_names(f"{mother}/val_files.txt", percentage=percentage)
-    list_train = [f"train/{file}" for file in list_train]
-    list_test = [f"test/{file}" for file in list_test]
-    list_val = [f"val/{file}" for file in list_val]
+    list_train = [f"train/{file}" for file in retrieve_file_names(f"{mother}/train_files.txt",percentage=percentage)]
+    list_test = [f"test/{file}" for file in retrieve_file_names(f"{mother}/test_files.txt", percentage=percentage)]
+    list_val = [f"val/{file}" for file in retrieve_file_names(f"{mother}/val_files.txt", percentage=percentage)]
     
     logger.info(f"Number of Train files: {len(list_train)} | Test {len(list_test)} | Val {len(list_val)}")
     
@@ -423,11 +431,10 @@ if __name__ == "__main__":
                                     read_all=False) \
                                     .select(*parquet_cols) 
     
-    # df_val = sparker.read_parquet(bucket_name,
-    #                                 path_validation,
-    #                                 read_all=False) \
-    #                                 .select(*parquet_cols) \
-    #                                 .sample(fraction = fraction_init) 
+    df_val = sparker.read_parquet(bucket_name,
+                                    list_val,
+                                    read_all=False) \
+                                    .select(*parquet_cols)
          
     logger.info(f"Opening df test")
     df_test = sparker.read_parquet(bucket_name,
@@ -445,6 +452,10 @@ if __name__ == "__main__":
     preprocessing_test = PreProcessing(df_test)
     df_test = preprocessing_test.split_xyz()
     
+    logger.info(f"Preprocessing Val")
+    preprocessing_val = PreProcessing(df_val)
+    df_val = preprocessing_val.split_xyz()
+    
     ## Feature Engineering
     logger.info(f"Feature Engineering | TRAIN")
     feature_eng_time = time.time()
@@ -455,6 +466,10 @@ if __name__ == "__main__":
     logger.info(f"Feature Engineering | TEST")
     engfeature_test = FeatureEngineering(df_test)
     df_test = engfeature_test.apply_all()
+    
+    logger.info(f"Feature Engineering | VAL")
+    engfeature_test = FeatureEngineering(df_val)
+    df_val = engfeature_test.apply_all()
     
     logger.info(f"TIME: Feature Engineering: {np.abs(time.time()- feature_eng_time):.4f}")
     
@@ -478,18 +493,22 @@ if __name__ == "__main__":
 
     # 4. Create pipeline
     logger.info(f"Pipeline")
-    
     pipeline = Pipeline(stages=[assembler, scaler, rf])
-
     pipe_time = time.time()
+    
     # 5. Train on ALL training data (distributed automatically)
     model = pipeline.fit(df_train)
     logger.info(f"TIME: Pipeline Fit: {np.abs(time.time()-pipe_time):.5f}")
     
+    # 6. Validate 
+    val_time = time.time()
+    predictions_val = model.transform(df_val)
+    logger.info(f"TIME: Validation: {np.abs(time.time()-val_time):.5f}")
+    
     # 6. Evaluate the model 
     pred_time = time.time()
     predictions = model.transform(df_test)
-    logger.info(f"TIME: Inference: {np.abs(time.time()-pred_time):.5f}")
+    logger.info(f"TIME: Test: {np.abs(time.time()-pred_time):.5f}")
     
     # 7. Test the Model
     evaluator = MulticlassClassificationEvaluator(
@@ -499,24 +518,43 @@ if __name__ == "__main__":
                     )
 
     accuracy = evaluator.evaluate(predictions)
+    accuracy_val = evaluator.evaluate(predictions_val)
+    
+    logger.info(f" Val Accuracy: {accuracy_val}")
     logger.info(f"Test Accuracy: {accuracy :.3f}")
     
     ## END MEASURING
     stagemetrics.end()
     logger.info(f"TIME: Final Time: {np.abs(time.time() - start_time):.5f}")
-    
-    
-    ## Make the Daily dir to save the output of the print statement
-    save_bucket = "s3://ubs-homes/erasmus/emanuel/"
-    mother_efs = "/home/efs/erasmus/emanuel/metrics/"
-    save_dir = './'
-    os.makedirs(mother_efs,exist_ok=True)
-    
-    ## Save the data at 
-    logger.info(f" The taskmetric is being saved at: {os.path.join(mother, metrics_file)}")
 
-  
-    with open(os.path.join(bucket_end, metrics_file), 'w') as f:
+    
+    ##stagemetrics save
+    logger.info(f"Save the stagemetrics as dictionary")
+    try:
+        # convert JavaMap to dict
+        metrics_java = stagemetrics.aggregate_stagemetrics()
+        metrics_dict = dict(metrics_java)
+        
+        # Save as CSV
+        file_csv_name = f"{datetime_now.strftime('%d-%m_%Hh-%Mmin')}-stagemetrics.csv"
+        csv_save_path = os.path.join(save_dir, file_csv_name)
+        
+        logger.info(f"Saving stagemetrics at: {csv_save_path}")
+        
+        pandas_df = pd.DataFrame([metrics_dict])
+        pandas_df.to_csv(csv_save_path, index=False)
+        
+        logger.info(f"saved stagemetrics to {csv_save_path}")
+        logger.info(f"Captured {len(metrics_dict)} metrics: {list(metrics_dict.keys())[:5]}...")
+        
+    except Exception as e:
+        logger.error(f"Failed to save stagemetrics: {str(e)}")
+        logger.exception(e)
+        
+
+    ## Save the data at 
+    logger.info(f" The taskmetric is being saved at: {os.path.join(save_dir, metrics_file)}")
+    with open(os.path.join(save_dir, metrics_file), 'w') as f:
         # Acuracy of the model
         f.write("=== Model Accuracy on Test Set ===\n")
         f.write("\n")
