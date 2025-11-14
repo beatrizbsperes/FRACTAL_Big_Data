@@ -365,43 +365,46 @@ if __name__ == "__main__":
     driver_mem=args.driver_mem
     percentage = args.sampling
     
-    ## Start Logger and name of the file 
-    datetime_now = datetime.today()
+    ## create the name of the file 
     metrics_file = f"{percentage}perc-{num_executors}ex-{num_cores_per_executor}core-metrics"
     
-    # Get the directory where this script is located
+    # Get the directory where this script is located and create a path on it
     script_dir = os.path.dirname(os.path.abspath(__file__))
     save_dir = os.path.join(script_dir, "metrics")
     os.makedirs(save_dir, exist_ok=True)
     
-    ## Create Logger
+    ## Create Logger with loguru
     logger.add(f"{save_dir}/{metrics_file}.log")
     logger.info(f"All the files are being saved at: {save_dir}")
-    
-    # path of the .txt file
-    mother= "/home/efs/erasmus/emanuel/files"
         
-    ## add logger
+    ## add argparse info to logger
     logger.info(f"Num Executors:{num_executors}")
     logger.info(f"Num Cores: {num_cores_per_executor}")
     logger.info(f"Executor memory: {executor_mem}")
     logger.info(f"Driver memory: {driver_mem}")
     logger.info(f"Percentage: {percentage}")
+    
+    # path of the .txt file
+    ## these files are the train/ test/ val/ bucket listed in a .txt
+    mother= "/home/efs/erasmus/emanuel/files"
         
     ## Name of the buckets
     ## Look for the .txt file containing the name of the files
+    ## percentage is the percentage of files to be retrieved from the list
+    ## which is an approximation to the actual percentage sampling
     list_train = [f"train/{file}" for file in retrieve_file_names(f"{mother}/train_files.txt",percentage=percentage)]
     list_test = [f"test/{file}" for file in retrieve_file_names(f"{mother}/test_files.txt", percentage=percentage)]
     list_val = [f"val/{file}" for file in retrieve_file_names(f"{mother}/val_files.txt", percentage=percentage)]
     
     logger.info(f"Number of Train files: {len(list_train)} | Test {len(list_test)} | Val {len(list_val)}")
     
+    # Bucket where the data is located.
     bucket_name = "ubs-datasets/FRACTAL/data"
     
-    ## First parquet cols to be select in order to reduce computational 
+    ## Name of the cols to be selected from each dataset in order to reduce computational cost
     parquet_cols = ["xyz","Intensity","Classification","Red","Green","Blue","Infrared","ReturnNumber","NumberOfReturns"]
 
-    # Create Sparker instance
+    # Create Sparker instance from the Sparker class
     sparker = Sparker(
         access_key=args.access_key,
         secret_key=args.access_secret
@@ -422,6 +425,7 @@ if __name__ == "__main__":
     stagemetrics.begin()  
     
     ## Total time
+    ## Time to process each task of this main
     start_time = time.time()
     
     ## 1. Read the parquet function 
@@ -474,17 +478,29 @@ if __name__ == "__main__":
     logger.info(f"TIME: Feature Engineering: {np.abs(time.time()- feature_eng_time):.4f}")
     
     ## TOTAL ROWS
+    ## count the number of rows to calculate properly the percentage of data being evaluate
+    ## this may be supress cause it is take time to process.
+    train_rows = test_rows = None
+    count_rows = time.time()
     train_rows = df_train.count()
     test_rows = df_test.count()
     logger.info(f"ROWS: TRAIN: {train_rows}")
     logger.info(f"ROWS: TEST: {test_rows}")
+    total_time_to_count_rows = np.abs(time.time()-count_rows)
+    logger.info(f"TIME: Count Rows: {total_time_to_count_rows:.5f}")
     
     # 2. Prepare the variables for the model  
     logger.info(f"Feature Cols | TRAIN ")
+    
+    ## drop classification column
     feature_cols = df_train.drop("Classification").columns   
+    
+    ## create a vector assembler with the feature variables
     assembler = VectorAssembler(inputCols=feature_cols,
                                 outputCol="features"
                                 )
+    
+    ## process standard scaler
     scaler = StandardScaler(inputCol="features",
                             outputCol="scaled_features"
                             )
@@ -495,7 +511,7 @@ if __name__ == "__main__":
                                 labelCol="Classification",
                                 bootstrap=True, 
                                 numTrees=50,
-                                maxDepth=10)
+                                maxDepth=7)
 
     # 4. Create pipeline
     logger.info(f"Pipeline")
@@ -523,30 +539,32 @@ if __name__ == "__main__":
                         metricName = 'accuracy'
                     )
 
+    ## Evaluate the model on the validation and the test
     accuracy = evaluator.evaluate(predictions)
     accuracy_val = evaluator.evaluate(predictions_val)
-    
     logger.info(f" Val Accuracy: {accuracy_val}")
     logger.info(f"Test Accuracy: {accuracy :.3f}")
     
     ## END MEASURING
     stagemetrics.end()
-    logger.info(f"TIME: Final Time: {np.abs(time.time() - start_time):.5f}")
-
+    final_time = time.time()
+    logger.info(f"TIME: Final Time: {np.abs(final_time - start_time):.5f}")
+    logger.info(f"TIME: Final Time supressed count rows: {np.abs(final_time - start_time - total_time_to_count_rows):.5f}")
     
-    ##stagemetrics save
+    ## stagemetrics save
     logger.info(f"Save the stagemetrics as dictionary")
     try:
         # convert JavaMap to dict
         metrics_java = stagemetrics.aggregate_stagemetrics()
         metrics_dict = dict(metrics_java)
         
-        # Save as CSV
-        file_csv_name = f"{datetime_now.strftime('%d-%m_%Hh-%Mmin')}-stagemetrics.csv"
+        # create the path to save it
+        file_csv_name = f"{metrics_file}-stagemetrics.csv"
         csv_save_path = os.path.join(save_dir, file_csv_name)
         
         logger.info(f"Saving stagemetrics at: {csv_save_path}")
         
+        ## convert to df to save the csv
         pandas_df = pd.DataFrame([metrics_dict])
         pandas_df.to_csv(csv_save_path, index=False)
         
@@ -558,7 +576,9 @@ if __name__ == "__main__":
         logger.exception(e)
         
 
-    ## Save the data at 
+    ## Save the print metrics from sparkmeasure
+    ## This is a test to see if the same metrics are being printed and saved
+    ## and therefore a try to understand better sparkmeasure metrics
     metrics_file = f"{metrics_file}.txt"
     logger.info(f" The taskmetric is being saved at: {os.path.join(save_dir, metrics_file)}")
     with open(os.path.join(save_dir, metrics_file), 'w') as f:
@@ -569,10 +589,11 @@ if __name__ == "__main__":
         f.write("\n")
 
         ## TOTAL ROWS
-        f.write("TOTAL ROWS")
-        f.write(f"TRAIN: {train_rows}")
-        f.write(f"TEST: {test_rows}")
-        f.write("\n")
+        if (train_rows) & (test_rows):
+            f.write("TOTAL ROWS")
+            f.write(f"TRAIN: {train_rows}")
+            f.write(f"TEST: {test_rows}")
+            f.write("\n")
         
         # Cluster information
         f.write("\n")
@@ -582,6 +603,7 @@ if __name__ == "__main__":
         f.write(f"Executor Memory: {args.executor_mem}\n")
         f.write(f"Driver Memory: {args.driver_mem}\n")
 
+        ## Manipulate the stdout in order to dump into this txt file
         old_stdout = sys.stdout
         sys.stdout = mystdout = io.StringIO()
         stagemetrics.print_report()
