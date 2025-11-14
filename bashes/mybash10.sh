@@ -5,37 +5,7 @@
 echo "TROPA DO CAGAO 10%"
 echo "================================"
 
-echo ""
-echo "sampling=10%, num-executors=32"
-echo "-------------------------------------------------------"
-spark-submit \
-  --master yarn \
-  --packages ch.cern.sparkmeasure:spark-measure_2.12:0.27 \
-  run.py \
-  --sampling 0.1 \
-  --num-executors 32 \
-  --num-cores-per-executor 2 \
-  --executor-mem 14g \
-  --driver-mem 4g
 
-echo ""
-echo "completed!"
-
-echo ""
-echo "sampling=10%, num-executors=16"
-echo "-------------------------------------------------------"
-spark-submit \
-  --master yarn \
-  --packages ch.cern.sparkmeasure:spark-measure_2.12:0.27 \
-  run.py \
-  --sampling 0.1 \
-  --num-executors 16 \
-  --num-cores-per-executor 3 \
-  --executor-mem 14g \
-  --driver-mem 4g
-
-echo ""
-echo "completed!"
 
 
 echo ""

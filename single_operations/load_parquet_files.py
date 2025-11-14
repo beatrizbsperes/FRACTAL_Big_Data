@@ -11,14 +11,14 @@ import argparse
 import sys
 
 # To be able to read or write files on S3 from your LOCAL PC you need to launch it this way:
-# spark-submit --master local[*] --packages org.apache.hadoop:hadoop-aws:3.3.1 load_parquet_files.py
+#  load_parquet_files.py
 
 # for SparkMeasure add to --packages on AWS EMR: ,ch.cern.sparkmeasure:spark-measure_2.12:0.27
 # or if you are using scala 2.13 on your PC:
 # add to --packages: ,ch.cern.sparkmeasure:spark-measure_2.13:0.27
 
 # on an AWS cluster launch it directly with :
-# spark-submit --master yarn load_parquet_files.py
+# spark-submit --master yarn --packages ch.cern.sparkmeasure:spark-measure_2.13:0.27 load_parquet_files.py -ff -ff 
 
 # default arguments
     
@@ -27,7 +27,7 @@ default_parq_file="s3a://ubs-datasets/FRACTAL/data/test/TEST-1176_6137-009200000
 # all test files on S3: "s3a://ubs-datasets/FRACTAL/data/test/*"
 # one local file: "./TEST-1176_6137-009200000.parquet"
     
-default_executor_mem= "4g"
+default_executor_mem= "16g"
 default_driver_mem= "4g"
     
 

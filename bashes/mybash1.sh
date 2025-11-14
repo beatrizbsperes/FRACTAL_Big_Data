@@ -78,5 +78,5 @@ echo "Copying metrics to S3 bucket..."
 echo "================================"
 aws s3 cp /home/efs/erasmus/emanuel/metrics s3://ubs-homes/erasmus/emanuel/metrics1 --recursive
 
-echo ""
+echo "Deleting metrics folder "
 echo "All done!"

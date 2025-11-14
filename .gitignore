@@ -6,4 +6,10 @@ pyspark_fractal.egg-info/
 *__pycache__
 *.parquet
 *.ipynb_checkpoints
-/metrics
+/metrics1
+/metrics2
+/metrics5
+/metrics10
+/results_aws
+/results2
+/all_metrics

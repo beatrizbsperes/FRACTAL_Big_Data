@@ -6,13 +6,13 @@ echo "TROPA DO CAGAO 5%"
 echo "================================"
 
 echo ""
-echo "sampling=2%, num-executors=32"
+echo "sampling=5%, num-executors=32"
 echo "-------------------------------------------------------"
 spark-submit \
   --master yarn \
   --packages ch.cern.sparkmeasure:spark-measure_2.12:0.27 \
   run.py \
-  --sampling 0.02 \
+  --sampling 0.05 \
   --num-executors 32 \
   --num-cores-per-executor 2 \
   --executor-mem 14g \
