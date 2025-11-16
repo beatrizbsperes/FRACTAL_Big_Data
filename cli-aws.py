@@ -1,3 +1,4 @@
+## Add all libraries necessary
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, sum as spark_sum, when, input_file_name
 from functools import reduce
@@ -31,6 +32,7 @@ import pandas as pd
         
 ## -------------------------------------------------------------------------------
 
+## Create a Spark Class to handle with operation as access key, sessions and Spark Context Manager.
 class Sparker:
     """
     A class to handle Spark operations on S3 parquet files.
@@ -49,6 +51,7 @@ class Sparker:
         self.secret_key = secret_key
         self.spark = None
     
+    ## Create a session to run on cluster or on local, depending where the experiment is taking place
     def _create_on_cluster_session(self, 
                     num_executors='16', num_cores_per_executor='3',
                     executor_mem="14g", driver_mem="4g"):
@@ -66,29 +69,32 @@ class Sparker:
         self.executor_mem = executor_mem
         self.driver_mem = driver_mem  
         
+         ## Spark Context
+        ## The following lines create the spark context and set up the following characteristics
         spark = ( 
             SparkSession.builder 
                 .appName("Tropa do CAGAO") 
                 .config("spark.hadoop.fs.s3a.fast.upload", "true")
-                .config("spark.hadoop.fs.s3a.multipart.size", "104857600")
-                .config("spark.executor.memory", str(self.executor_mem ))
-                .config("spark.driver.memory", str(self.driver_mem ))
-                .config("spark.executor.instances", str(self.num_executors))
-                .config("spark.executor.cores", str(self.num_cores_per_executor))
-                .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") ## serialize 
-                .config("spark.sql.adaptive.enabled", "true") \
-                .config("spark.sql.adaptive.coalescePartitions.enabled", "true") \
-                .config("spark.sql.adaptive.skewJoin.enabled", "true") \
+                .config("spark.hadoop.fs.s3a.multipart.size", "104857600")  #100MB size of each part when Spark upload files to S3
+                .config("spark.executor.memory", str(self.executor_mem )) ## Config the executor memory
+                .config("spark.driver.memory", str(self.driver_mem )) ## Config the driver memory
+                .config("spark.executor.instances", str(self.num_executors)) ## Number of executors
+                .config("spark.executor.cores", str(self.num_cores_per_executor))  ## Number of cores per executors
+                .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") ## serialize, introduce a new serializer 
+                .config("spark.sql.adaptive.enabled", "true") ## enable Adaptative Query Execution
+                .config("spark.sql.adaptive.coalescePartitions.enabled", "true")  ## Enable Coaslence
+                .config("spark.sql.adaptive.skewJoin.enabled", "true") ## treat skewed datasets with the AQE
                 .config("spark.sql.adaptive.join.enabled", "true") \
                 .config("spark.sql.adaptive.shuffle.targetPostShuffleInputSize", "128MB") \
                 .config("spark.sql.adaptive.localShuffleReader.enabled", "true") \
                 .config("spark.sql.adaptive.coalescePartitions.minPartitionNum", "2") \
-                .config("spark.sql.adaptive.advisoryPartitionSizeInBytes", "128MB") \
-                ##.config("spark.sql.shuffle.partitions", str((num_executors * num_cores_per_executor)* 2)) # 2 partitions per core ##shitzi
-                .config("spark.sql.files.maxPartitionBytes", "268435456")  # 256MB
-                .config("spark.driver.maxResultSize", "1g")
+                .config("spark.sql.adaptive.advisoryPartitionSizeInBytes", "128MB") ## size of the partitions
+                .config("spark.sql.files.maxPartitionBytes", "268435456")  # 256MB max size of the partitions
+                .config("spark.driver.maxResultSize", "1g") ## select a max result size to avoid OOM errors in driver
                 .getOrCreate()
             )
+        
+         ## return the spark context into the class
         self.spark = spark
         
         print("Session Created!")
@@ -97,7 +103,8 @@ class Sparker:
         print(f"- executor memory= {executor_mem}")
         print(f"- driver memory= {driver_mem}")
         
-          
+    ## Create a local session
+    ## it uses the almost the same config as the session above        
     def _create_local_session(self, 
                     num_executors='16', num_cores_per_executor='3',
                     executor_mem="14g", driver_mem="4g"):
@@ -137,7 +144,8 @@ class Sparker:
         
         return spark
                              
-
+    ## Function to read the parquet
+    ## the parquet can be read from a single file, from a list or from the whole bucket
     def read_parquet(self, bucket_name, path, read_all=False):
         """
         Read the parquet file(s) with inferred schema.
@@ -165,6 +173,7 @@ class Sparker:
                 .option("inferSchema", "true") \
                 .parquet(*self.file_path)  # <-- pass the list as *args
 
+    ## close the context manager
     def close(self):
         """
         Stop the Spark session and release resources.
@@ -174,6 +183,7 @@ class Sparker:
             print("\nSpark session stopped.")
 
 
+## This class initialize the preprocessing steps
 class PreProcessing():
     def __init__(self, spark_df):
         self.df = spark_df
@@ -181,6 +191,8 @@ class PreProcessing():
     def sampling(self, sample_size = 0.1):
         """
         Returns a sample dataset for quick propotype 
+        This was disconsider since to use this function when sampling requires
+        to load the whole dataset in order to sampled.
         """
         self.df = self.df.sample(fraction=sample_size)
     
@@ -203,6 +215,7 @@ class PreProcessing():
         return assembler 
 
 
+## This class enables all feature engineering regarding the project
 class FeatureEngineering():
     def __init__(self, spark_df):
         self.df = spark_df
@@ -211,12 +224,15 @@ class FeatureEngineering():
         """
         Calculate height above local ground.
         """
+        ## create two new columns
         self.df = self.df.withColumn("gx", (col("x") / grid_size).cast("int")) \
                          .withColumn("gy", (col("y") / grid_size).cast("int"))
         
+         ## create a window over gx gy
         window = Window.partitionBy("gx", "gy")
         self.df = self.df.withColumn("ground_z", spark_min("z").over(window))
         
+        ## calc the height  above ground
         self.df = self.df.withColumn("height_above_ground", col("z") - col("ground_z"))
         self.df = self.df.drop("gx", "gy", "ground_z")
         return self.df
@@ -226,9 +242,10 @@ class FeatureEngineering():
         Calculate local neighborhood statistics.
         Creates roughness and density features.
         """
+        ## create new lx ly column
         self.df = self.df.withColumn("lx", (col("x") / grid_size).cast("int")) \
                         .withColumn("ly", (col("y") / grid_size).cast("int"))
-        
+        ## windowing
         window = Window.partitionBy("lx", "ly")
         
         # local statistics with null handling
@@ -255,6 +272,7 @@ class FeatureEngineering():
         """
         from pyspark.sql.functions import when, col
         
+        ## this function avoid division by zero with coaslence
         self.df = self.df.withColumn("return_ratio", 
                                     when(col("NumberOfReturns") != 0, 
                                         col("ReturnNumber") / col("NumberOfReturns"))
@@ -272,6 +290,7 @@ class FeatureEngineering():
         NDVI for vegetation detection.
         Green red ratio.
         """
+        ## create a new column with the ratio  of NIR and Red
         self.df = self.df.withColumn("ndvi", (col("Infrared") - col("Red")) / (col("Infrared") + col("Red") + 0.001))
         self.df = self.df.withColumn("green_red_ratio", col("Green") / (col("Red") + 0.001))
         return self.df
@@ -280,6 +299,7 @@ class FeatureEngineering():
         """
         NDWI for water detection
         """
+        ## create a new column with the ratio Green and NIR
         self.df = self.df.withColumn("ndwi", (col("Green") - col("Infrared")) / (col("Green") + col("Infrared") + 0.001))
         return self.df
     
@@ -297,7 +317,7 @@ class FeatureEngineering():
         self.drop_xyz()
         return self.df 
 
-
+## This function is used to sample the files in order to set up the experiment
 def retrieve_file_names(path, percentage = None):
     """
     Match .parquet and return a list. If percentage, then return a sampled list.
@@ -356,7 +376,7 @@ if __name__ == "__main__":
                         type=float, required=False, help="Percentage of the Dataset to be sampled")
     args = parser.parse_args()
 
-    ##print(args)
+    ##args passed
     access_key = args.access_key
     access_secret = args.access_secret
     num_executors=args.num_executors
@@ -450,6 +470,8 @@ if __name__ == "__main__":
     ## PreProcessing
     logger.info(f"Preprocessing Train")
     preprocessing = PreProcessing(df_train)
+    
+    ## split (x,y,z) into three columns
     df_train = preprocessing.split_xyz()
     
     logger.info(f"Preprocessing Test")
@@ -464,6 +486,7 @@ if __name__ == "__main__":
     logger.info(f"Feature Engineering | TRAIN")
     feature_eng_time = time.time()
     
+    ## Apply the feature engineering class in the dataset
     engfeature = FeatureEngineering(df_train)
     df_train = engfeature.apply_all()
     
@@ -554,7 +577,7 @@ if __name__ == "__main__":
     ## stagemetrics save
     logger.info(f"Save the stagemetrics as dictionary")
     try:
-        # convert JavaMap to dict
+        # convert javamap to dict
         metrics_java = stagemetrics.aggregate_stagemetrics()
         metrics_dict = dict(metrics_java)
         

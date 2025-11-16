@@ -62,3 +62,15 @@ We tried a new serializer, that was given by:
 `.config("spark.hadoop.fs.s3a.multipart.size", "104857600"`
 This linerefers to the size of each part when Spark upload files to S3, which is equal to 100MB.
 This control how big each part is uploaded to the S3 connector.
+
+
+
+Typical Formula:
+num-executors = (total_cores_in_cluster / executor-cores) - 1
+(The -1 reserves one executor for the ApplicationMaster)
+Example:
+
+4 worker nodes × 16 cores = 64 total cores
+Choose executor-cores = 5 (recommended: 4-6 cores per executor)
+num-executors = (64 / 5) - 1 = ~12 executors
+executor-memory = (total_node_memory / executors_per_node) × 0.9
